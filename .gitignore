@@ -1,0 +1,8 @@
+.env
+*.env
+
+*.exe
+*.dll
+
+*.db
+uploads/
