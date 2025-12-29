@@ -1,7 +1,7 @@
-.env
-*.env
+# .env
+# *.env
 
-*.exe
+# *.exe
 *.dll
 
 *.db
