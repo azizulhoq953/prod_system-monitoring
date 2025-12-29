@@ -8,6 +8,8 @@ type Agent struct {
 	ID        uint      `gorm:"primaryKey" json:"id"`
 	Hostname  string    `gorm:"uniqueIndex" json:"hostname"` 
 	OS        string    `json:"os"`
+	UserFullName string    `json:"user_full_name"` 
+    Organization string    `json:"organization"`
 	IPAddress string    `json:"ip_address"`
 	LastSeen  time.Time `json:"last_seen"`
 }
