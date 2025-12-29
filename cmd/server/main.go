@@ -55,6 +55,7 @@ err := godotenv.Load()
 	r.POST("/api/register", myHandler.RegisterAgent)
 	r.POST("/api/activity", myHandler.LogActivity)
 	r.POST("/api/screenshot", myHandler.UploadScreenshot)
+	r.GET("/api/stats", myHandler.GetDashboardStats)
 
 	fmt.Printf("Server running on port %s\n", serverPort)
 	r.Run(serverPort)

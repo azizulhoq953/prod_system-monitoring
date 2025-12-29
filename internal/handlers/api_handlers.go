@@ -1,86 +1,116 @@
 package handlers
 
 import (
-	"fmt"
-	"monitor-system/internal/models"
-	"net/http"
-	"path/filepath"
-	"time"
+    "fmt"
+    "monitor-system/internal/models"
+    "net/http"
+    "os"
+    "path/filepath"
+    "strings"
+    "time"
 
-	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
+    "github.com/gin-gonic/gin"
+    "gorm.io/gorm"
 )
 
-//db struct to hold dependencies
 type MonitorHandler struct {
-	DB        *gorm.DB
-	UploadDir string
+    DB        *gorm.DB
+    UploadDir string
 }
 
-// constructor function
 func NewMonitorHandler(db *gorm.DB, uploadDir string) *MonitorHandler {
-	return &MonitorHandler{
-		DB:        db,
-		UploadDir: uploadDir,
-	}
+    return &MonitorHandler{
+        DB:        db,
+        UploadDir: uploadDir,
+    }
 }
 
-
-// Register Agent
 func (h *MonitorHandler) RegisterAgent(c *gin.Context) {
-	var input models.Agent
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	
-	// h.DB.Where to find existing or create new
-	var agent models.Agent
-	h.DB.Where(models.Agent{Hostname: input.Hostname}).FirstOrCreate(&agent, models.Agent{Hostname: input.Hostname})
-	h.DB.Model(&agent).Updates(models.Agent{OS: input.OS, IPAddress: input.IPAddress, LastSeen: time.Now()})
+    var input models.Agent
+    if err := c.ShouldBindJSON(&input); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
 
-	c.JSON(http.StatusOK, gin.H{"agent_id": agent.ID})
+    var agent models.Agent
+    h.DB.Where(models.Agent{Hostname: input.Hostname}).FirstOrCreate(&agent, models.Agent{Hostname: input.Hostname})
+
+    h.DB.Model(&agent).Updates(models.Agent{
+        UserFullName: input.UserFullName,
+        Organization: input.Organization,
+        OS:           input.OS,
+        IPAddress:    input.IPAddress,
+        LastSeen:     time.Now(),
+    })
+
+    c.JSON(http.StatusOK, gin.H{"agent_id": agent.ID})
 }
 
-// Log Activity
 func (h *MonitorHandler) LogActivity(c *gin.Context) {
-	var input models.Activity
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	input.Timestamp = time.Now()
-	h.DB.Create(&input)
-	c.JSON(http.StatusOK, gin.H{"status": "logged"})
+    var input models.Activity
+    if err := c.ShouldBindJSON(&input); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+    input.Timestamp = time.Now()
+    h.DB.Create(&input)
+    c.JSON(http.StatusOK, gin.H{"status": "logged"})
 }
 
-// Upload Screenshot
 func (h *MonitorHandler) UploadScreenshot(c *gin.Context) {
-	agentID := c.PostForm("agent_id")
-	file, err := c.FormFile("file")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
-		return
-	}
+    agentID := c.PostForm("agent_id")
+    file, err := c.FormFile("file")
+    if err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "No file uploaded"})
+        return
+    }
 
-	// Save file to upload directory
-	filename := fmt.Sprintf("%s_%d_%s", agentID, time.Now().Unix(), filepath.Base(file.Filename))
-	savePath := filepath.Join(h.UploadDir, filename)
+    var agent models.Agent
+    if err := h.DB.First(&agent, agentID).Error; err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+        return
+    }
 
-	if err := c.SaveUploadedFile(file, savePath); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
-		return
-	}
+    folderName := agent.UserFullName
+    if folderName == "" {
+        folderName = agent.Hostname 
+    }
+    safeFolderName := strings.ReplaceAll(folderName, " ", "_")
 
-	// DB Entry
-	var agent models.Agent
-	h.DB.First(&agent, agentID)
+    userDir := filepath.Join(h.UploadDir, safeFolderName)
+    if err := os.MkdirAll(userDir, 0755); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user directory"})
+        return
+    }
 
-	h.DB.Create(&models.Screenshot{
-		AgentID:   agent.ID,
-		FilePath:  savePath,
-		Timestamp: time.Now(),
-	})
+    filename := fmt.Sprintf("%d_%d_%s", agent.ID, time.Now().Unix(), filepath.Base(file.Filename))
+    savePath := filepath.Join(userDir, filename)
 
-	c.JSON(http.StatusOK, gin.H{"status": "uploaded", "path": savePath})
+    if err := c.SaveUploadedFile(file, savePath); err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
+        return
+    }
+
+    h.DB.Create(&models.Screenshot{
+        AgentID:   agent.ID,
+        FilePath:  savePath, 
+        Timestamp: time.Now(),
+    })
+
+    c.JSON(http.StatusOK, gin.H{"status": "uploaded", "path": savePath})
+}
+
+func (h *MonitorHandler) GetDashboardStats(c *gin.Context) {
+    var totalUsers int64
+    var totalScreenshots int64
+
+    h.DB.Model(&models.Agent{}).Count(&totalUsers)
+    
+
+    h.DB.Model(&models.Screenshot{}).Count(&totalScreenshots)
+
+    c.JSON(http.StatusOK, gin.H{
+        "total_users":       totalUsers,
+        "total_screenshots": totalScreenshots,
+    })
 }
