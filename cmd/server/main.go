@@ -43,8 +43,6 @@ err := godotenv.Load()
 	// run migrations
 	db.AutoMigrate(&models.Agent{}, &models.Activity{}, &models.Screenshot{})
 
-	// handler initialize
-	// uploadDir := "./uploads"
 	myHandler := handlers.NewMonitorHandler(db, uploadDir)
 
 	// router setup
@@ -55,7 +53,6 @@ err := godotenv.Load()
 	r.POST("/api/register", myHandler.RegisterAgent)
 	r.POST("/api/activity", myHandler.LogActivity)
 	r.POST("/api/screenshot", myHandler.UploadScreenshot)
-	r.GET("/api/stats", myHandler.GetDashboardStats)
 
 	fmt.Printf("Server running on port %s\n", serverPort)
 	r.Run(serverPort)

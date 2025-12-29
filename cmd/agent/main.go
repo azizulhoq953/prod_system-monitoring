@@ -288,7 +288,6 @@ func captureAndUpload() {
 	}
 }
 
-// Fixed: Now accepts arguments to match showPrivacyScreen call
 func registerSelf(name, org string) error {
 	hostname, _ := os.Hostname()
 	localIP := getLocalIP()
@@ -316,7 +315,6 @@ func registerSelf(name, org string) error {
 	return fmt.Errorf("invalid response from server")
 }
 
-// --- Persistence Helpers ---
 
 func loadConfig() bool {
 	file, err := os.ReadFile(configPath)
