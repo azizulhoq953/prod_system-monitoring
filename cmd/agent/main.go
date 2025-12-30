@@ -34,7 +34,7 @@ type AgentConfig struct {
 
 var (
 	client      = resty.New()
-	serverURL   = "http://192.168.2.87:8080" // Ensure this IP is correct!
+	serverURL   = "http://10.10.7.72:8080" // Ensure this IP is correct!
 	agentConfig AgentConfig
 	configPath  = "agent_config.json"
 
