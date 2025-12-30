@@ -24,7 +24,6 @@ import (
 	"github.com/kbinani/screenshot"
 )
 
-// --- Configuration Struct ---
 type AgentConfig struct {
 	AgentID      uint   `json:"agent_id"`
 	UserFullName string `json:"user_full_name"`
@@ -34,28 +33,24 @@ type AgentConfig struct {
 
 var (
 	client      = resty.New()
-	serverURL   = "http://10.10.7.72:8080" // Ensure this IP is correct!
+	serverURL   = "http://10.10.7.72:8080"
 	agentConfig AgentConfig
 	configPath  = "agent_config.json"
 
-	// Concurrency Controls
 	stopTracking = make(chan bool)
 	isTracking   = false
 
-	// UI Elements for updates
 	statusLabel  *widget.Label
 	previewImage *canvas.Image
 )
 
 func main() {
-	// 1. Create App with ID
 	a := app.NewWithID("com.sparktech.agent")
 	w := a.NewWindow("Workplace Monitor Agent")
 
 	w.Resize(fyne.NewSize(500, 700))
 	w.CenterOnScreen()
 
-	// 2. Setup System Tray
 	if desk, ok := a.(desktop.App); ok {
 		m := fyne.NewMenu("Agent",
 			fyne.NewMenuItem("Show Dashboard", func() {
@@ -68,7 +63,6 @@ func main() {
 		desk.SetSystemTrayMenu(m)
 	}
 
-	// 3. Intercept Close Button
 	w.SetCloseIntercept(func() {
 		w.Hide()
 		a.SendNotification(fyne.NewNotification("Agent Hidden", "Running in background..."))
@@ -110,7 +104,6 @@ func showPrivacyScreen(w fyne.Window, a fyne.App) {
 			return
 		}
 
-		// 1. Try to register (Fixed arguments here)
 		err := registerSelf(nameEntry.Text, orgEntry.Text)
 		if err != nil {
 			dialog.ShowError(fmt.Errorf("Server connection failed: %v", err), w)
@@ -233,7 +226,6 @@ func runTrackingLoop() {
 
 		case <-activityTicker.C:
 			currentWindow := getActiveWindowTitle()
-			// Only send if window changed AND it's not "Unknown" (optional check)
 			if currentWindow != "" && currentWindow != lastWindow {
 				client.R().
 					SetBody(map[string]interface{}{

@@ -114,3 +114,136 @@ func (h *MonitorHandler) GetDashboardStats(c *gin.Context) {
         "total_screenshots": totalScreenshots,
     })
 }
+
+// func (h *MonitorHandler) GetActivityLogs(c *gin.Context) {
+//     var activities []models.Activity
+    
+//     if err := h.DB.Order("timestamp desc").Limit(50).Find(&activities).Error; err != nil {
+//         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch logs"})
+//         return
+//     }
+
+//     c.JSON(http.StatusOK, activities)
+// }
+
+func (h *MonitorHandler) GetScreenshotGallery(c *gin.Context) {
+    type UserGallery struct {
+        Username string   `json:"username"`
+        Images   []string `json:"images"`
+    }
+
+    var gallery []UserGallery
+    root := h.UploadDir // e.g., "./uploads"
+
+    // ফোল্ডার রিড করা
+    entries, err := os.ReadDir(root)
+    if err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not read uploads folder"})
+        return
+    }
+
+    for _, entry := range entries {
+        if entry.IsDir() {
+            username := entry.Name()
+            userPath := filepath.Join(root, username)
+            
+            var images []string
+            files, _ := os.ReadDir(userPath)
+            
+            for _, file := range files {
+                // শুধুমাত্র ইমেজ ফাইল নেওয়া
+                if strings.HasSuffix(file.Name(), ".png") || strings.HasSuffix(file.Name(), ".jpg") {
+                    // URL তৈরি করা: /uploads/Azizul/image.png
+                    imgURL := "/uploads/" + username + "/" + file.Name()
+                    images = append(images, imgURL)
+                }
+            }
+
+            // যদি ইমেজ থাকে তবে লিস্টে যোগ করা
+            if len(images) > 0 {
+                gallery = append(gallery, UserGallery{
+                    Username: username,
+                    Images:   images,
+                })
+            }
+        }
+    }
+
+    c.JSON(http.StatusOK, gallery)
+}
+
+//get all agent 
+// 1. Get All Agents (For Home Page)
+func (h *MonitorHandler) GetAllAgents(c *gin.Context) {
+    var agents []models.Agent
+    if err := h.DB.Order("last_seen desc").Find(&agents).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch agents"})
+        return
+    }
+    c.JSON(http.StatusOK, agents)
+}
+
+
+func (h *MonitorHandler) GetActivityLogs(c *gin.Context) {
+    var activities []models.Activity
+    agentID := c.Query("agent_id") 
+
+    query := h.DB.Order("timestamp desc").Limit(100)
+    
+    if agentID != "" {
+        query = query.Where("agent_id = ?", agentID)
+    }
+
+    if err := query.Find(&activities).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch logs"})
+        return
+    }
+
+    c.JSON(http.StatusOK, activities)
+}
+
+
+func (h *MonitorHandler) GetAgentImages(c *gin.Context) {
+    agentID := c.Query("agent_id")
+    
+    if agentID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Agent ID required"})
+        return
+    }
+
+    var agent models.Agent
+    if err := h.DB.First(&agent, agentID).Error; err != nil {
+        c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+        return
+    }
+
+    folderName := agent.UserFullName
+    if folderName == "" {
+        folderName = agent.Hostname
+    }
+
+    safeFolderName := strings.ReplaceAll(folderName, " ", "_")
+
+    userPath := filepath.Join(h.UploadDir, safeFolderName)
+    fmt.Printf("📂 Looking for images in: %s\n", userPath) 
+
+    var images []string
+    files, err := os.ReadDir(userPath)
+    
+    if err == nil {
+        for _, file := range files {
+            if !file.IsDir() && (strings.HasSuffix(file.Name(), ".png") || strings.HasSuffix(file.Name(), ".jpg")) {
+                fullURL := "/uploads/" + safeFolderName + "/" + file.Name()
+                images = append(images, fullURL)
+            }
+        }
+    } else {
+        fmt.Printf("⚠️ Folder not found: %s\n", userPath)
+    }
+
+    for i, j := 0, len(images)-1; i < j; i, j = i+1, j-1 {
+        images[i], images[j] = images[j], images[i]
+    }
+
+    c.JSON(http.StatusOK, images)
+}
