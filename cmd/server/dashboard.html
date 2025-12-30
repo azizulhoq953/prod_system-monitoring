@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoring Admin Panel</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; margin: 0; padding: 20px; color: #333; }
+        
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+        h1 { margin: 0; color: #2c3e50; }
+        .back-btn { display: none; padding: 8px 15px; background: #34495e; color: white; border: none; border-radius: 5px; cursor: pointer; }
+        .back-btn:hover { background: #2c3e50; }
+
+        #view-agents { display: block; }
+        .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
+        .agent-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; border-left: 5px solid #007bff; }
+        .agent-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
+        .agent-name { font-size: 1.2em; font-weight: bold; margin-bottom: 5px; }
+        .agent-ip { color: #666; font-size: 0.9em; margin-bottom: 10px; }
+        .status { font-size: 0.8em; padding: 3px 8px; border-radius: 10px; background: #e1f5fe; color: #0288d1; display: inline-block; }
+
+        /* VIEW 2: AGENT DETAILS */
+        #view-details { display: none; }
+        .section-title { font-size: 1.3em; margin: 20px 0 10px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+
+        /* Table */
+        .table-container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background: #343a40; color: white; }
+
+        /* Gallery */
+        .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 15px; margin-top: 15px; }
+        .gallery-item { border: 1px solid #ddd; border-radius: 5px; overflow: hidden; background: white; }
+        .gallery-item img { width: 100%; height: 120px; object-fit: cover; display: block; cursor: pointer; }
+        .img-meta { padding: 5px; font-size: 0.75em; color: #666; text-align: center; }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1 id="page-title">Dashboard</h1>
+        <button class="back-btn" onclick="showHome()">← Back to List</button>
+    </header>
+
+    <div id="view-agents">
+        <div class="agent-grid" id="agent-container">
+            <p>Loading agents...</p>
+        </div>
+    </div>
+
+    <div id="view-details">
+        <h2 id="detail-agent-name" style="color: #007bff;">Agent Details</h2>
+        
+        <div class="section-title">📝 Recent Activity</div>
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Window Title</th>
+                    </tr>
+                </thead>
+                <tbody id="detail-logs">
+                    </tbody>
+            </table>
+        </div>
+
+        <div class="section-title">📸 Screenshots</div>
+        <div class="gallery-grid" id="detail-gallery">
+            </div>
+    </div>
+
+    <script>
+        window.onload = loadAgents;
+
+        function loadAgents() {
+            fetch('/api/agents')
+                .then(res => res.json())
+                .then(agents => {
+                    const container = document.getElementById('agent-container');
+                    container.innerHTML = '';
+                    
+                    if (!agents || agents.length === 0) {
+                        container.innerHTML = '<p>No agents connected yet.</p>';
+                        return;
+                    }
+
+                    agents.forEach(agent => {
+                        const name = agent.hostname || agent.Hostname || "Unknown";
+                        const ip = agent.ip_address || agent.IPAddress || "N/A";
+                        const id = agent.id || agent.ID;
+                        const lastSeen = agent.last_seen || agent.LastSeen;
+                        const dateStr = lastSeen ? new Date(lastSeen).toLocaleString() : "Never";
+
+                        const card = document.createElement('div');
+                        card.className = 'agent-card';
+                        card.onclick = () => showDetails(id, name);
+
+                        card.innerHTML = `
+                            <div class="agent-name">🖥️ ${name}</div>
+                            <div class="agent-ip">IP: ${ip}</div>
+                            <div class="status">Last Seen: ${dateStr}</div>
+                        `;
+                        container.appendChild(card);
+                    });
+                })
+                .catch(err => console.error("Error loading agents:", err));
+        }
+
+// --- 2. Show Details Logic ---
+        function showDetails(agentId, agentDisplayNames) {
+            // UI Switch (আগের মতোই)
+            document.getElementById('view-agents').style.display = 'none';
+            document.getElementById('view-details').style.display = 'block';
+            document.querySelector('.back-btn').style.display = 'block';
+            document.getElementById('page-title').innerText = 'Monitor';
+            document.getElementById('detail-agent-name').innerText = `Agent: ${agentDisplayNames}`;
+
+            // 1. Load Logs (আগের মতোই)
+            fetch(`/api/logs?agent_id=${agentId}`)
+                .then(res => res.json())
+                .then(logs => {
+                    const tbody = document.getElementById('detail-logs');
+                    tbody.innerHTML = '';
+                    if(!logs || logs.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="2">No logs found</td></tr>';
+                        return;
+                    }
+                    logs.forEach(log => {
+                        const time = log.timestamp || log.Timestamp;
+                        const win = log.window || log.Window || "Unknown";
+                        tbody.innerHTML += `
+                            <tr>
+                                <td style="color:#666; width: 180px;">${new Date(time).toLocaleString()}</td>
+                                <td>${win}</td>
+                            </tr>`;
+                    });
+                });
+
+            console.log("Fetching images for Agent ID:", agentId);
+
+            fetch(`/api/agent-images?agent_id=${agentId}`)
+                .then(res => res.json())
+                .then(images => {
+                    const gallery = document.getElementById('detail-gallery');
+                    gallery.innerHTML = '';
+                    
+                    if(!images || images.length === 0) {
+                        gallery.innerHTML = '<p style="padding:10px; color:#666">No screenshots found for this user.</p>';
+                        return;
+                    }
+
+                    images.forEach(img => {
+                        const name = img.split('/').pop();
+                        gallery.innerHTML += `
+                            <div class="gallery-item">
+                                <a href="${img}" target="_blank">
+                                    <img src="${img}" loading="lazy" onerror="this.style.display='none'">
+                                </a>
+                                <div class="img-meta">${name}</div>
+                            </div>`;
+                    });
+                })
+                .catch(err => console.error("Image Fetch Error:", err));
+        }
+        function showHome() {
+            document.getElementById('view-agents').style.display = 'block';
+            document.getElementById('view-details').style.display = 'none';
+            document.querySelector('.back-btn').style.display = 'none';
+            document.getElementById('page-title').innerText = 'Dashboard';
+            loadAgents(); 
+        }
+    </script>
+</body>
+</html>
