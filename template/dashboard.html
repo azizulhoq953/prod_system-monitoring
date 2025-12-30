@@ -112,14 +112,12 @@
 
 // --- 2. Show Details Logic ---
         function showDetails(agentId, agentDisplayNames) {
-            // UI Switch (আগের মতোই)
             document.getElementById('view-agents').style.display = 'none';
             document.getElementById('view-details').style.display = 'block';
             document.querySelector('.back-btn').style.display = 'block';
             document.getElementById('page-title').innerText = 'Monitor';
             document.getElementById('detail-agent-name').innerText = `Agent: ${agentDisplayNames}`;
 
-            // 1. Load Logs (আগের মতোই)
             fetch(`/api/logs?agent_id=${agentId}`)
                 .then(res => res.json())
                 .then(logs => {

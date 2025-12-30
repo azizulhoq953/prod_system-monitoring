@@ -115,16 +115,7 @@ func (h *MonitorHandler) GetDashboardStats(c *gin.Context) {
     })
 }
 
-// func (h *MonitorHandler) GetActivityLogs(c *gin.Context) {
-//     var activities []models.Activity
-    
-//     if err := h.DB.Order("timestamp desc").Limit(50).Find(&activities).Error; err != nil {
-//         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch logs"})
-//         return
-//     }
 
-//     c.JSON(http.StatusOK, activities)
-// }
 
 func (h *MonitorHandler) GetScreenshotGallery(c *gin.Context) {
     type UserGallery struct {
@@ -133,9 +124,8 @@ func (h *MonitorHandler) GetScreenshotGallery(c *gin.Context) {
     }
 
     var gallery []UserGallery
-    root := h.UploadDir // e.g., "./uploads"
+    root := h.UploadDir
 
-    // ফোল্ডার রিড করা
     entries, err := os.ReadDir(root)
     if err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": "Could not read uploads folder"})
@@ -151,15 +141,12 @@ func (h *MonitorHandler) GetScreenshotGallery(c *gin.Context) {
             files, _ := os.ReadDir(userPath)
             
             for _, file := range files {
-                // শুধুমাত্র ইমেজ ফাইল নেওয়া
                 if strings.HasSuffix(file.Name(), ".png") || strings.HasSuffix(file.Name(), ".jpg") {
-                    // URL তৈরি করা: /uploads/Azizul/image.png
                     imgURL := "/uploads/" + username + "/" + file.Name()
                     images = append(images, imgURL)
                 }
             }
 
-            // যদি ইমেজ থাকে তবে লিস্টে যোগ করা
             if len(images) > 0 {
                 gallery = append(gallery, UserGallery{
                     Username: username,
