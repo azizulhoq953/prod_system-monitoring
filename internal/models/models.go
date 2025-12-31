@@ -11,7 +11,10 @@ type Agent struct {
 	UserFullName string    `json:"user_full_name"` 
     Organization string    `json:"organization"`
 	IPAddress string    `json:"ip_address"`
-	LastSeen  time.Time `json:"last_seen"`
+	Status       string    `json:"status"`    
+	ActiveTime   string    `json:"active_time"` 
+
+	LastSeen     time.Time `json:"last_seen"`
 }
 
 type Activity struct {
@@ -19,6 +22,7 @@ type Activity struct {
 	AgentID   uint      `json:"agent_id"` 
 	Agent     Agent     `json:"agent"`
 	Window    string    `json:"window"`
+	// Timestamp time.Time `json:"timestamp"`
 	Timestamp time.Time `json:"timestamp"`
 }
 

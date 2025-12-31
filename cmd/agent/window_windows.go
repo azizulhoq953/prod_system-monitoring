@@ -12,6 +12,7 @@ var (
     procGetForegroundWindow  = user32.NewProc("GetForegroundWindow")
     procGetWindowTextW       = user32.NewProc("GetWindowTextW")
     procGetWindowTextLengthW = user32.NewProc("GetWindowTextLengthW")
+ 
 )
 
 func getActiveWindowTitle() string {

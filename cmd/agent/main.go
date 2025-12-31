@@ -22,6 +22,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"github.com/go-resty/resty/v2"
 	"github.com/kbinani/screenshot"
+	"fyne.io/fyne/v2/data/binding"
 )
 
 type AgentConfig struct {
@@ -33,15 +34,18 @@ type AgentConfig struct {
 
 var (
 	client      = resty.New()
-	serverURL   = "http://10.10.7.72:8080"
+	serverURL   = "http://10.10.7.72:8080" 
 	agentConfig AgentConfig
 	configPath  = "agent_config.json"
 
-	stopTracking = make(chan bool)
-	isTracking   = false
-
-	statusLabel  *widget.Label
-	previewImage *canvas.Image
+	stopTracking  = make(chan bool)
+	isTracking    = false
+	durationLabel *widget.Label 
+    timerData     = binding.NewString()
+	startTime     time.Time
+	stopTimer     chan bool
+	statusLabel   *widget.Label
+	previewImage  *canvas.Image
 )
 
 func main() {
@@ -68,7 +72,6 @@ func main() {
 		a.SendNotification(fyne.NewNotification("Agent Hidden", "Running in background..."))
 	})
 
-	// 4. Load Logic
 	if !loadConfig() {
 		showPrivacyScreen(w, a)
 	} else {
@@ -82,7 +85,6 @@ func main() {
 
 func showPrivacyScreen(w fyne.Window, a fyne.App) {
 	w.SetTitle("Workplace Monitor Agent")
-
 	header := widget.NewLabelWithStyle("User Information", fyne.TextAlignCenter, fyne.TextStyle{Bold: true})
 
 	nameEntry := widget.NewEntry()
@@ -110,13 +112,11 @@ func showPrivacyScreen(w fyne.Window, a fyne.App) {
 			return
 		}
 
-		// 2. Save config locally
 		agentConfig.UserFullName = nameEntry.Text
 		agentConfig.Organization = orgEntry.Text
 		agentConfig.AgreedToToS = true
 		saveConfig()
 
-		// 3. Go to Dashboard
 		showDashboard(w, a)
 	})
 	saveBtn.Importance = widget.HighImportance
@@ -128,6 +128,33 @@ func showPrivacyScreen(w fyne.Window, a fyne.App) {
 		layout.NewSpacer(),
 		saveBtn,
 	))
+}
+
+// Timer Logic (Fixed)
+func startTimer() {
+    startTime = time.Now()
+    stopTimer = make(chan bool)
+
+    go func() {
+        ticker := time.NewTicker(1 * time.Second)
+        defer ticker.Stop()
+
+        for {
+            select {
+            case <-stopTimer:
+                return
+            case <-ticker.C:
+                elapsed := time.Since(startTime)
+                h := int(elapsed.Hours())
+                m := int(elapsed.Minutes()) % 60
+                s := int(elapsed.Seconds()) % 60
+                
+                timeString := fmt.Sprintf("Active Time: %02d:%02d:%02d", h, m, s)
+                // auto update fyne label
+                timerData.Set(timeString) 
+            }
+        }
+    }()
 }
 
 func showDashboard(w fyne.Window, a fyne.App) {
@@ -150,14 +177,16 @@ func showDashboard(w fyne.Window, a fyne.App) {
 
 	statusLabel = widget.NewLabel("Status: IDLE")
 	statusLabel.TextStyle = fyne.TextStyle{Bold: true}
+	durationLabel = widget.NewLabelWithData(timerData) 
+    durationLabel.TextStyle = fyne.TextStyle{Bold: true}
 
-	statusCard := widget.NewCard("System Status", "", container.NewVBox(
-		infoLabel,
-		widget.NewSeparator(),
-		statusLabel,
-	))
+    statusCard := widget.NewCard("System Status", "", container.NewVBox(
+        infoLabel,
+        widget.NewSeparator(),
+        statusLabel,
+        durationLabel,
+    ))
 
-	// C. Preview Section
 	previewImage = canvas.NewImageFromResource(theme.FyneLogo())
 	previewImage.FillMode = canvas.ImageFillContain
 	previewImage.SetMinSize(fyne.NewSize(400, 250))
@@ -167,31 +196,47 @@ func showDashboard(w fyne.Window, a fyne.App) {
 
 	previewCard := widget.NewCard("Live Preview", "", container.NewPadded(imageContainer))
 
-	// D. Control Buttons
+	// D. Control Buttons (FIXED LOGIC)
 	var startBtn *widget.Button
 	var stopBtn *widget.Button
 
+	// Start Button Definition
 	startBtn = widget.NewButtonWithIcon("START MONITORING", theme.MediaPlayIcon(), func() {
 		if isTracking {
 			return
 		}
+		
+		// 1. Logic Setup
 		isTracking = true
 		statusLabel.SetText("Status: MONITORING ACTIVE")
 		startBtn.Disable()
 		stopBtn.Enable()
-		go runTrackingLoop()
+
+		// 2. Start Background Processes
+		go runTrackingLoop() // Server tracking
+		startTimer()         // UI Timer
 	})
 	startBtn.Importance = widget.HighImportance
 
+	// Stop Button Definition
 	stopBtn = widget.NewButtonWithIcon("STOP MONITORING", theme.MediaStopIcon(), func() {
 		if !isTracking {
 			return
 		}
-		stopTracking <- true
+
+		// 1. Stop Processes
+		stopTracking <- true // Stop server tracking loop
+		if stopTimer != nil {
+			stopTimer <- true // Stop UI timer
+			// close(stopTimer) // Optional: Safe to close if recreated in startTimer
+		}
+
+		// 2. Logic Reset
 		isTracking = false
-		statusLabel.SetText("Status: PAUSED")
+		statusLabel.SetText("Status: IDLE")
 		startBtn.Enable()
 		stopBtn.Disable()
+		
 	})
 	stopBtn.Disable()
 
@@ -211,73 +256,106 @@ func showDashboard(w fyne.Window, a fyne.App) {
 // --- Background Logic ---
 
 func runTrackingLoop() {
-	activityTicker := time.NewTicker(2 * time.Second) // Slowed down slightly
-	screenshotTicker := time.NewTicker(60 * time.Second)
+    // check window title every 2 seconds
+    activityTicker := time.NewTicker(2 * time.Second)
+    // every 30 second server heartbeat
+    heartbeatTicker := time.NewTicker(30 * time.Second) 
+    
+    screenshotTicker := time.NewTicker(60 * time.Second)
 
-	defer activityTicker.Stop()
-	defer screenshotTicker.Stop()
+    defer activityTicker.Stop()
+    defer heartbeatTicker.Stop()
+    defer screenshotTicker.Stop()
 
-	lastWindow := ""
+    lastWindow := ""
 
-	for {
-		select {
-		case <-stopTracking:
-			return
 
-		case <-activityTicker.C:
-			currentWindow := getActiveWindowTitle()
-			if currentWindow != "" && currentWindow != lastWindow {
-				client.R().
-					SetBody(map[string]interface{}{
-						"agent_id":  agentConfig.AgentID,
-						"window":    currentWindow,
-						"timestamp": time.Now(),
-					}).
-					Post(serverURL + "/api/activity")
-				lastWindow = currentWindow
-			}
+	//helper function to send activity
+sendActivity := func(windowName string) {
+  fmt.Println("Sending heartbeat...", time.Now().Format("15:04:05"))
 
-		case <-screenshotTicker.C:
-			captureAndUpload()
-		}
-	}
+    resp, err := client.R().
+        SetBody(map[string]interface{}{
+            "agent_id":  agentConfig.AgentID,
+            "window":    windowName,
+            "timestamp": time.Now(),
+        }).
+        Post(serverURL + "/api/activity")
+
+        if err != nil {
+            fmt.Println("❌ Error sending heartbeat:", err)
+        } else {
+            fmt.Printf("✅ Server Responded: Status: %d, Body: %s\n", resp.StatusCode(), resp.String())
+        }
+    }
+
+    for {
+        select {
+        case <-stopTracking:
+            return
+
+        case <-activityTicker.C:
+            currentWindow := getActiveWindowTitle()
+            if currentWindow != "" && currentWindow != lastWindow {
+                sendActivity(currentWindow)
+                lastWindow = currentWindow
+            }
+
+        case <-heartbeatTicker.C:
+
+            if lastWindow != "" {
+                sendActivity(lastWindow)
+            } else {
+                 sendActivity("System Idle") 
+            }
+
+        case <-screenshotTicker.C:
+            captureAndUpload()
+        }
+    }
 }
 
 func captureAndUpload() {
-	n := screenshot.NumActiveDisplays()
-	if n <= 0 {
-		return
-	}
+    n := screenshot.NumActiveDisplays()
+    if n <= 0 {
+        return
+    }
 
-	for i := 0; i < n; i++ {
-		bounds := screenshot.GetDisplayBounds(i)
-		img, err := screenshot.CaptureRect(bounds)
-		if err != nil {
-			continue
-		}
+    for i := 0; i < n; i++ {
+        bounds := screenshot.GetDisplayBounds(i)
+        img, err := screenshot.CaptureRect(bounds)
+        if err != nil {
+            continue
+        }
 
-		var imageBuf bytes.Buffer
-		png.Encode(&imageBuf, img)
+        var imageBuf bytes.Buffer
+        png.Encode(&imageBuf, img)
 
-		// UI Update
-		if i == 0 && previewImage != nil {
-			previewImage.Image = img
-			previewImage.Refresh()
-		}
+        // UI update fix (Thread Safe)
+        if i == 0 && previewImage != nil {
+            // We take the image into a local variable for safety
+            currentImg := img
+            
+            // Using fyne.Do to send update to main thread
+            fyne.Do(func() {
+                previewImage.Image = currentImg
+                previewImage.Refresh()  //solve issues 336 
+            })
+        }
 
-		filename := fmt.Sprintf("screen_%d_%d.png", agentConfig.AgentID, i)
+        filename := fmt.Sprintf("screen_%d_%d.png", agentConfig.AgentID, i)
 
-		// Upload
-		go func(buf bytes.Buffer, fname string, displayIdx int) {
-			client.R().
-				SetFormData(map[string]string{
-					"agent_id": fmt.Sprintf("%d", agentConfig.AgentID),
-					"display":  fmt.Sprintf("%d", displayIdx),
-				}).
-				SetFileReader("file", fname, &buf).
-				Post(serverURL + "/api/screenshot")
-		}(imageBuf, filename, i)
-	}
+        // Upload Logic (Background Goroutine)
+        go func(buf bytes.Buffer, fname string, displayIdx int) {
+            client.R().
+                SetFormData(map[string]string{
+                    "agent_id": fmt.Sprintf("%d", agentConfig.AgentID),
+                    "display":  fmt.Sprintf("%d", displayIdx),
+                }).
+                SetFileReader("file", fname, &buf).
+                Post(serverURL + "/api/screenshot")
+        }(imageBuf, filename, i)
+    }
 }
 
 func registerSelf(name, org string) error {
@@ -307,7 +385,6 @@ func registerSelf(name, org string) error {
 	return fmt.Errorf("invalid response from server")
 }
 
-
 func loadConfig() bool {
 	file, err := os.ReadFile(configPath)
 	if err != nil {
@@ -332,7 +409,7 @@ func getLocalIP() string {
 			if ipNet.IP.To4() != nil {
 				return ipNet.IP.String()
 			}
-		}
-	}
-	return "unknown"
+        }
+    }
+    return "unknown"
 }

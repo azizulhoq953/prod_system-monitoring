@@ -18,6 +18,12 @@ type MonitorHandler struct {
     UploadDir string
 }
 
+type AgentResponse struct {
+    models.Agent
+    Status     string `json:"status"`      
+    ActiveTime string `json:"active_time"` 
+}
+
 func NewMonitorHandler(db *gorm.DB, uploadDir string) *MonitorHandler {
     return &MonitorHandler{
         DB:        db,
@@ -44,17 +50,6 @@ func (h *MonitorHandler) RegisterAgent(c *gin.Context) {
     })
 
     c.JSON(http.StatusOK, gin.H{"agent_id": agent.ID})
-}
-
-func (h *MonitorHandler) LogActivity(c *gin.Context) {
-    var input models.Activity
-    if err := c.ShouldBindJSON(&input); err != nil {
-        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-        return
-    }
-    input.Timestamp = time.Now()
-    h.DB.Create(&input)
-    c.JSON(http.StatusOK, gin.H{"status": "logged"})
 }
 
 func (h *MonitorHandler) UploadScreenshot(c *gin.Context) {
@@ -159,28 +154,83 @@ func (h *MonitorHandler) GetScreenshotGallery(c *gin.Context) {
     c.JSON(http.StatusOK, gallery)
 }
 
-//get all agent 
-// 1. Get All Agents (For Home Page)
+
 func (h *MonitorHandler) GetAllAgents(c *gin.Context) {
     var agents []models.Agent
+    
+    // loaded all agents from DB
     if err := h.DB.Order("last_seen desc").Find(&agents).Error; err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch agents"})
         return
     }
-    c.JSON(http.StatusOK, agents)
-}
 
+    var responseList []AgentResponse
+    
+    // Today's date (from midnight) reset time
+    startOfDay := time.Now().Truncate(24 * time.Hour)
+
+    for _, agent := range agents {
+        // If seen within last 2 minutes, then Active, else Paused
+        status := "Paused"
+        if time.Since(agent.LastSeen) < 5*time.Minute {
+            status = "Active"
+        }
+
+        //  Active Time Logic (Daily Reset) ---
+        // count today's activity logs for this agent
+        var activityCount int64
+        h.DB.Model(&models.Activity{}).
+            Where("agent_id = ? AND timestamp >= ?", agent.ID, startOfDay).
+            Count(&activityCount)
+
+        // Active Time Calculation ---
+        // if 1 log = 1 minute active time
+        // law of total minutes
+        totalMinutes := int(activityCount) // if reccived 1 log = 1 minute
+        
+        hours := totalMinutes / 60
+        minutes := totalMinutes % 60
+        timeString := fmt.Sprintf("%dh %dm", hours, minutes)
+
+        // append to response list
+        responseList = append(responseList, AgentResponse{
+            Agent:      agent,
+            Status:     status,
+            ActiveTime: timeString,
+        })
+    }
+
+    c.JSON(http.StatusOK, responseList)
+}
 
 func (h *MonitorHandler) GetActivityLogs(c *gin.Context) {
     var activities []models.Activity
     agentID := c.Query("agent_id") 
+    date := c.Query("date")     
+    month := c.Query("month")
 
     query := h.DB.Order("timestamp desc").Limit(100)
     
     if agentID != "" {
         query = query.Where("agent_id = ?", agentID)
     }
-
+    if date != "" {
+        
+        startOfDay, err := time.Parse("2006-01-02", date)
+        if err == nil {
+            endOfDay := startOfDay.Add(24 * time.Hour)
+            query = query.Where("timestamp >= ? AND timestamp < ?", startOfDay, endOfDay)
+            fmt.Printf("📅 Filtering logs for date: %s\n", date)
+        }
+    } else if month != "" {
+      
+        startOfMonth, err := time.Parse("2006-01", month)
+        if err == nil {
+            endOfMonth := startOfMonth.AddDate(0, 1, 0)
+            query = query.Where("timestamp >= ? AND timestamp < ?", startOfMonth, endOfMonth)
+            fmt.Printf("📅 Filtering logs for month: %s\n", month)
+        }
+    }
     if err := query.Find(&activities).Error; err != nil {
         c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch logs"})
         return
@@ -190,8 +240,44 @@ func (h *MonitorHandler) GetActivityLogs(c *gin.Context) {
 }
 
 
+func (h *MonitorHandler) GetActivityByDate(c *gin.Context) {
+    agentID := c.Query("agent_id")
+    date := c.Query("date")
+    month := c.Query("month") 
+    
+    if agentID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Agent ID required"})
+        return
+    }
+
+    var activities []models.Activity
+    query := h.DB.Where("agent_id = ?", agentID).Order("timestamp desc")
+
+    if date != "" {
+        // Specific day
+        startOfDay, _ := time.Parse("2006-01-02", date)
+        endOfDay := startOfDay.Add(24 * time.Hour)
+        query = query.Where("timestamp >= ? AND timestamp < ?", startOfDay, endOfDay)
+    } else if month != "" {
+        // Specific month
+        startOfMonth, _ := time.Parse("2006-01", month)
+        endOfMonth := startOfMonth.AddDate(0, 1, 0)
+        query = query.Where("timestamp >= ? AND timestamp < ?", startOfMonth, endOfMonth)
+    }
+
+    if err := query.Find(&activities).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch activities"})
+        return
+    }
+
+    c.JSON(http.StatusOK, activities)
+}
+
+// Update GetAgentImages to support date filtering
 func (h *MonitorHandler) GetAgentImages(c *gin.Context) {
     agentID := c.Query("agent_id")
+    date := c.Query("date")
+    month := c.Query("month")
     
     if agentID == "" {
         c.JSON(http.StatusBadRequest, gin.H{"error": "Agent ID required"})
@@ -208,29 +294,96 @@ func (h *MonitorHandler) GetAgentImages(c *gin.Context) {
     if folderName == "" {
         folderName = agent.Hostname
     }
-
     safeFolderName := strings.ReplaceAll(folderName, " ", "_")
 
-    userPath := filepath.Join(h.UploadDir, safeFolderName)
-    fmt.Printf("📂 Looking for images in: %s\n", userPath) 
+    var screenshots []models.Screenshot
+    query := h.DB.Where("agent_id = ?", agentID).Order("timestamp desc")
 
-    var images []string
-    files, err := os.ReadDir(userPath)
-    
-    if err == nil {
-        for _, file := range files {
-            if !file.IsDir() && (strings.HasSuffix(file.Name(), ".png") || strings.HasSuffix(file.Name(), ".jpg")) {
-                fullURL := "/uploads/" + safeFolderName + "/" + file.Name()
-                images = append(images, fullURL)
-            }
-        }
-    } else {
-        fmt.Printf("⚠️ Folder not found: %s\n", userPath)
+    if date != "" {
+        startOfDay, _ := time.Parse("2006-01-02", date)
+        endOfDay := startOfDay.Add(24 * time.Hour)
+        query = query.Where("timestamp >= ? AND timestamp < ?", startOfDay, endOfDay)
+    } else if month != "" {
+        startOfMonth, _ := time.Parse("2006-01", month)
+        endOfMonth := startOfMonth.AddDate(0, 1, 0)
+        query = query.Where("timestamp >= ? AND timestamp < ?", startOfMonth, endOfMonth)
     }
 
-    for i, j := 0, len(images)-1; i < j; i, j = i+1, j-1 {
-        images[i], images[j] = images[j], images[i]
+    query.Find(&screenshots)
+
+    var images []string
+    for _, screenshot := range screenshots {
+        filename := filepath.Base(screenshot.FilePath)
+        fullURL := "/uploads/" + safeFolderName + "/" + filename
+        
+        // Verify file exists
+        if _, err := os.Stat(screenshot.FilePath); err == nil {
+            images = append(images, fullURL)
+        }
     }
 
     c.JSON(http.StatusOK, images)
+}
+
+// Add this to get available dates for an agent
+func (h *MonitorHandler) GetAvailableDates(c *gin.Context) {
+    agentID := c.Query("agent_id")
+    
+    if agentID == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Agent ID required"})
+        return
+    }
+
+    type DateCount struct {
+        Date  string `json:"date"`
+        Count int64  `json:"count"`
+    }
+
+    var results []DateCount
+    h.DB.Model(&models.Activity{}).
+        Select("DATE(timestamp) as date, COUNT(*) as count").
+        Where("agent_id = ?", agentID).
+        Group("DATE(timestamp)").
+        Order("date desc").
+        Scan(&results)
+
+    c.JSON(http.StatusOK, results)
+}
+
+//reccived activity purposes dashboard status update
+
+func (h *MonitorHandler) ReceiveActivity(c *gin.Context) {
+    var activity models.Activity
+
+    // . JSON Binding
+    if err := c.ShouldBindJSON(&activity); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+
+    // ৩. save activity to DB
+    if err := h.DB.Create(&activity).Error; err != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save activity"})
+        return
+    }
+
+    // update agent's last seen and status to Active
+    result := h.DB.Model(&models.Agent{}).
+        Where("id = ?", activity.AgentID).
+        Updates(map[string]interface{}{
+            "last_seen": time.Now(),
+            "status":    "Active",
+        })
+
+    // check for errors and rows affected
+    if result.Error != nil {
+        fmt.Printf("❌ DB Update Error for Agent %d: %v\n", activity.AgentID, result.Error)
+    } else if result.RowsAffected == 0 {
+        fmt.Printf("⚠️ WARNING: Tried to update Agent %d but NO ROWS were affected! (ID mismatch?)\n", activity.AgentID)
+    } else {
+        fmt.Printf("✅ Success: Updated Agent %d status to Active.\n", activity.AgentID)
+    }
+
+    c.JSON(http.StatusOK, gin.H{"status": "logged"})
 }

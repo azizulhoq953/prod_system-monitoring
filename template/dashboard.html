@@ -24,6 +24,82 @@
         #view-details { display: none; }
         .section-title { font-size: 1.3em; margin: 20px 0 10px; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
 
+        /* Date Filter Section */
+        .filter-section {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .filter-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filter-controls input, .filter-controls select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .filter-controls button {
+            padding: 8px 15px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        .filter-controls button:hover {
+            background: #0056b3;
+        }
+        .filter-controls button.reset {
+            background: #6c757d;
+        }
+        .filter-controls button.reset:hover {
+            background: #5a6268;
+        }
+
+        /* Calendar Grid */
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        .date-card {
+            background: white;
+            padding: 12px;
+            border-radius: 6px;
+            border: 2px solid #e0e0e0;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .date-card:hover {
+            border-color: #007bff;
+            transform: translateY(-2px);
+        }
+        .date-card.selected {
+            background: #007bff;
+            color: white;
+            border-color: #0056b3;
+        }
+        .date-card .date-label {
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+        .date-card .activity-count {
+            font-size: 0.85em;
+            color: #666;
+            margin-top: 5px;
+        }
+        .date-card.selected .activity-count {
+            color: #e0e0e0;
+        }
+
         /* Table */
         .table-container { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); overflow-x: auto; }
         table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -36,6 +112,11 @@
         .gallery-item img { width: 100%; height: 120px; object-fit: cover; display: block; cursor: pointer; }
         .img-meta { padding: 5px; font-size: 0.75em; color: #666; text-align: center; }
 
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
     </style>
 </head>
 <body>
@@ -54,6 +135,19 @@
     <div id="view-details">
         <h2 id="detail-agent-name" style="color: #007bff;">Agent Details</h2>
         
+        <!-- Date Filter Section -->
+        <div class="filter-section">
+            <h3 style="margin-top: 0;">📅 Filter by Date</h3>
+            <div class="filter-controls">
+                <input type="date" id="date-picker" onchange="filterByDate()">
+                <input type="month" id="month-picker" onchange="filterByMonth()">
+                <button onclick="showToday()">Today</button>
+                <button onclick="showYesterday()">Yesterday</button>
+                <button class="reset" onclick="resetDateFilter()">Show All</button>
+            </div>
+            <div id="calendar-view" class="calendar-grid" style="margin-top: 15px;"></div>
+        </div>
+
         <div class="section-title">📝 Recent Activity</div>
         <div class="table-container">
             <table>
@@ -63,46 +157,73 @@
                         <th>Window Title</th>
                     </tr>
                 </thead>
-                <tbody id="detail-logs">
-                    </tbody>
+                <tbody id="detail-logs"></tbody>
             </table>
         </div>
 
         <div class="section-title">📸 Screenshots</div>
-        <div class="gallery-grid" id="detail-gallery">
-            </div>
+        <div class="gallery-grid" id="detail-gallery"></div>
     </div>
 
-    <script>
-        window.onload = loadAgents;
+   <script>
+        let currentAgentId = null;
+        let currentSelectedDate = null;
+
+        window.onload = function() {
+            loadAgents();
+            setInterval(loadAgents, 3000);
+        };
 
         function loadAgents() {
-            fetch('/api/agents')
+            fetch('/api/agents?t=' + new Date().getTime())
                 .then(res => res.json())
                 .then(agents => {
                     const container = document.getElementById('agent-container');
-                    container.innerHTML = '';
                     
                     if (!agents || agents.length === 0) {
-                        container.innerHTML = '<p>No agents connected yet.</p>';
+                        if(container.children.length === 0) {
+                            container.innerHTML = '<p>No agents connected yet.</p>';
+                        }
                         return;
                     }
+
+                    container.innerHTML = '';
 
                     agents.forEach(agent => {
                         const name = agent.hostname || agent.Hostname || "Unknown";
                         const ip = agent.ip_address || agent.IPAddress || "N/A";
                         const id = agent.id || agent.ID;
-                        const lastSeen = agent.last_seen || agent.LastSeen;
-                        const dateStr = lastSeen ? new Date(lastSeen).toLocaleString() : "Never";
+                        const activeTime = agent.active_time || "0h 0m";
+
+                        const lastSeenDate = new Date(agent.last_seen || agent.LastSeen);
+                        const now = new Date();
+                        const diffSeconds = (now - lastSeenDate) / 1000;
+                        const isOnline = diffSeconds < 180;
+
+                        const displayStatus = isOnline ? "Active" : "Paused";
+                        const statusColor = isOnline ? "#28a745" : "#dc3545";
+
+                        const statusBadge = `
+                            <span style="background:${statusColor}; color:white; padding:3px 8px; border-radius:12px; font-size:0.8em;">
+                                ${displayStatus}
+                            </span>`;
 
                         const card = document.createElement('div');
                         card.className = 'agent-card';
                         card.onclick = () => showDetails(id, name);
 
                         card.innerHTML = `
-                            <div class="agent-name">🖥️ ${name}</div>
-                            <div class="agent-ip">IP: ${ip}</div>
-                            <div class="status">Last Seen: ${dateStr}</div>
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <div class="agent-name">🖥️ ${name}</div>
+                                ${statusBadge}
+                            </div>
+                            <div class="agent-ip" style="margin-top:5px;">IP: ${ip}</div>
+                            <div style="font-size:0.8em; color:#888; margin-top:2px;">Last seen: ${lastSeenDate.toLocaleTimeString()}</div>
+                            
+                            <div style="margin-top:15px; padding-top:10px; border-top:1px solid #eee;">
+                                <div style="font-size:0.9em; color:#666;">Today's Active Time:</div>
+                                <div style="font-size:1.4em; font-weight:bold; color:#007bff;">⏱️ ${activeTime}</div>
+                            </div>
                         `;
                         container.appendChild(card);
                     });
@@ -110,21 +231,136 @@
                 .catch(err => console.error("Error loading agents:", err));
         }
 
-// --- 2. Show Details Logic ---
-        function showDetails(agentId, agentDisplayNames) {
+        function showDetails(agentId, agentDisplayName) {
+            currentAgentId = agentId;
+            currentSelectedDate = null;
+            
             document.getElementById('view-agents').style.display = 'none';
             document.getElementById('view-details').style.display = 'block';
             document.querySelector('.back-btn').style.display = 'block';
             document.getElementById('page-title').innerText = 'Monitor';
-            document.getElementById('detail-agent-name').innerText = `Agent: ${agentDisplayNames}`;
+            document.getElementById('detail-agent-name').innerText = `Agent: ${agentDisplayName}`;
 
-            fetch(`/api/logs?agent_id=${agentId}`)
+            // Load calendar
+            loadAvailableDates(agentId);
+            
+            // Load today's data by default
+            loadActivityAndImages(agentId);
+        }
+
+        function loadAvailableDates(agentId) {
+            fetch(`/api/available-dates?agent_id=${agentId}&t=${new Date().getTime()}`)
+                .then(res => res.json())
+                .then(dates => {
+                    const calendar = document.getElementById('calendar-view');
+                    calendar.innerHTML = '';
+                    
+                    if (!dates || dates.length === 0) {
+                        calendar.innerHTML = '<p style="padding:10px; color:#666;">No activity history found.</p>';
+                        return;
+                    }
+
+                    dates.forEach(item => {
+                        const dateObj = new Date(item.date);
+                        const dateStr = dateObj.toISOString().split('T')[0];
+                        const displayDate = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        
+                        const card = document.createElement('div');
+                        card.className = 'date-card';
+                        card.onclick = () => selectDate(dateStr);
+                        
+                        card.innerHTML = `
+                            <div class="date-label">${displayDate}</div>
+                            <div class="activity-count">${item.count} activities</div>
+                        `;
+                        calendar.appendChild(card);
+                    });
+                });
+        }
+
+        function selectDate(dateStr) {
+            currentSelectedDate = dateStr;
+            
+            // Update visual selection
+            document.querySelectorAll('.date-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            event.target.closest('.date-card').classList.add('selected');
+            
+            // Update date picker
+            document.getElementById('date-picker').value = dateStr;
+            document.getElementById('month-picker').value = '';
+            
+            loadActivityAndImages(currentAgentId, dateStr);
+        }
+
+        function filterByDate() {
+            const date = document.getElementById('date-picker').value;
+            if (date) {
+                currentSelectedDate = date;
+                document.getElementById('month-picker').value = '';
+                loadActivityAndImages(currentAgentId, date);
+            }
+        }
+
+        function filterByMonth() {
+            const month = document.getElementById('month-picker').value;
+            if (month) {
+                currentSelectedDate = null;
+                document.getElementById('date-picker').value = '';
+                loadActivityAndImages(currentAgentId, null, month);
+            }
+        }
+
+        function showToday() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('date-picker').value = today;
+            currentSelectedDate = today;
+            document.getElementById('month-picker').value = '';
+            loadActivityAndImages(currentAgentId, today);
+        }
+
+        function showYesterday() {
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            const dateStr = yesterday.toISOString().split('T')[0];
+            document.getElementById('date-picker').value = dateStr;
+            currentSelectedDate = dateStr;
+            document.getElementById('month-picker').value = '';
+            loadActivityAndImages(currentAgentId, dateStr);
+        }
+
+        function resetDateFilter() {
+            currentSelectedDate = null;
+            document.getElementById('date-picker').value = '';
+            document.getElementById('month-picker').value = '';
+            document.querySelectorAll('.date-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            loadActivityAndImages(currentAgentId);
+        }
+
+        function loadActivityAndImages(agentId, date = null, month = null) {
+            // let logsUrl = `/api/logs?agent_id=${agentId}&t=${new Date().getTime()}`;
+            let logsUrl = `/api/logs?agent_id=${agentId}&t=${new Date().getTime()}`;
+            let imagesUrl = `/api/agent-images?agent_id=${agentId}&t=${new Date().getTime()}`;
+            
+            if (date) {
+                logsUrl += `&date=${date}`;
+                imagesUrl += `&date=${date}`;
+            } else if (month) {
+                logsUrl += `&month=${month}`;
+                imagesUrl += `&month=${month}`;
+            }
+
+            // Load Logs
+            fetch(logsUrl)
                 .then(res => res.json())
                 .then(logs => {
                     const tbody = document.getElementById('detail-logs');
                     tbody.innerHTML = '';
                     if(!logs || logs.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="2">No logs found</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="2" style="text-align:center; color:#999;">No activity found for selected period</td></tr>';
                         return;
                     }
                     logs.forEach(log => {
@@ -138,16 +374,15 @@
                     });
                 });
 
-            console.log("Fetching images for Agent ID:", agentId);
-
-            fetch(`/api/agent-images?agent_id=${agentId}`)
+            // Load Images
+            fetch(imagesUrl)
                 .then(res => res.json())
                 .then(images => {
                     const gallery = document.getElementById('detail-gallery');
                     gallery.innerHTML = '';
                     
                     if(!images || images.length === 0) {
-                        gallery.innerHTML = '<p style="padding:10px; color:#666">No screenshots found for this user.</p>';
+                        gallery.innerHTML = '<div class="empty-state">📷 No screenshots found for this period</div>';
                         return;
                     }
 
@@ -164,12 +399,15 @@
                 })
                 .catch(err => console.error("Image Fetch Error:", err));
         }
+
         function showHome() {
             document.getElementById('view-agents').style.display = 'block';
             document.getElementById('view-details').style.display = 'none';
             document.querySelector('.back-btn').style.display = 'none';
             document.getElementById('page-title').innerText = 'Dashboard';
-            loadAgents(); 
+            currentAgentId = null;
+            currentSelectedDate = null;
+            loadAgents();
         }
     </script>
 </body>
