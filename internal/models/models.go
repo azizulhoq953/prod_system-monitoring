@@ -13,7 +13,6 @@ type Agent struct {
 	IPAddress string    `json:"ip_address"`
 	Status       string    `json:"status"`    
 	ActiveTime   string    `json:"active_time"` 
-
 	LastSeen     time.Time `json:"last_seen"`
 }
 

@@ -95,6 +95,7 @@ func main() {
     r.GET("/api/agent-images", myHandler.GetAgentImages)
     r.GET("/api/activity-by-date", myHandler.GetActivityByDate)
     r.GET("/api/available-dates", myHandler.GetAvailableDates)
+    r.PATCH("/api/update-agent", myHandler.UpdateAgentHostname)
 
     fmt.Printf("Server running on port %s\n", serverPort)
     r.Run(serverPort)

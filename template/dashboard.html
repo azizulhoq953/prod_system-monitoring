@@ -14,11 +14,93 @@
 
         #view-agents { display: block; }
         .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .agent-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; border-left: 5px solid #007bff; }
+        .agent-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; border-left: 5px solid #007bff; position: relative; }
         .agent-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
         .agent-name { font-size: 1.2em; font-weight: bold; margin-bottom: 5px; }
         .agent-ip { color: #666; font-size: 0.9em; margin-bottom: 10px; }
-        .status { font-size: 0.8em; padding: 3px 8px; border-radius: 10px; background: #e1f5fe; color: #0288d1; display: inline-block; }
+
+        /* Edit Button */
+        .edit-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+        .edit-btn:hover {
+            background: #0056b3;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 30px;
+            border-radius: 10px;
+            width: 400px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .modal-header {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #2c3e50;
+        }
+        .modal-input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+        }
+        .modal-buttons {
+            display: flex;
+            gap: 10px;
+            justify-content: flex-end;
+        }
+        .modal-btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .modal-btn.save {
+            background: #28a745;
+            color: white;
+        }
+        .modal-btn.save:hover {
+            background: #218838;
+        }
+        .modal-btn.cancel {
+            background: #6c757d;
+            color: white;
+        }
+        .modal-btn.cancel:hover {
+            background: #5a6268;
+        }
 
         /* VIEW 2: AGENT DETAILS */
         #view-details { display: none; }
@@ -126,6 +208,18 @@
         <button class="back-btn" onclick="showHome()">← Back to List</button>
     </header>
 
+    <!-- Edit Hostname Modal -->
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">✏️ Edit Agent Hostname</div>
+            <input type="text" id="hostname-input" class="modal-input" placeholder="Enter new hostname">
+            <div class="modal-buttons">
+                <button class="modal-btn cancel" onclick="closeEditModal()">Cancel</button>
+                <button class="modal-btn save" onclick="saveHostname()">Save</button>
+            </div>
+        </div>
+    </div>
+
     <div id="view-agents">
         <div class="agent-grid" id="agent-container">
             <p>Loading agents...</p>
@@ -168,6 +262,7 @@
    <script>
         let currentAgentId = null;
         let currentSelectedDate = null;
+        let editingAgentId = null;
 
         window.onload = function() {
             loadAgents();
@@ -210,9 +305,17 @@
 
                         const card = document.createElement('div');
                         card.className = 'agent-card';
-                        card.onclick = () => showDetails(id, name);
+                        
+                        // Card এ click করলে details দেখাবে
+                        card.onclick = (e) => {
+                            // যদি edit button এ click না হয়
+                            if (!e.target.classList.contains('edit-btn')) {
+                                showDetails(id, name);
+                            }
+                        };
 
                         card.innerHTML = `
+                            <button class="edit-btn" onclick="event.stopPropagation(); openEditModal(${id}, '${name}')">✏️</button>
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <div class="agent-name">🖥️ ${name}</div>
                                 ${statusBadge}
@@ -231,6 +334,54 @@
                 .catch(err => console.error("Error loading agents:", err));
         }
 
+        // ✅ Edit Modal Functions
+        function openEditModal(agentId, currentHostname) {
+            editingAgentId = agentId;
+            document.getElementById('hostname-input').value = currentHostname;
+            document.getElementById('editModal').style.display = 'block';
+        }
+
+        function closeEditModal() {
+            document.getElementById('editModal').style.display = 'none';
+            editingAgentId = null;
+        }
+
+        function saveHostname() {
+            const newHostname = document.getElementById('hostname-input').value.trim();
+            
+            if (!newHostname) {
+                alert('Hostname cannot be empty!');
+                return;
+            }
+
+            fetch('/api/update-agent', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    agent_id: editingAgentId,
+                    hostname: newHostname
+                })
+            })
+            .then(res => res.json())
+            .then(response => {
+                console.log("✅ Hostname updated:", response);
+                closeEditModal();
+                loadAgents(); 
+            })
+            .catch(err => {
+                console.error("❌ Error updating hostname:", err);
+                alert('Failed to update hostname!');
+            });
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('editModal');
+            if (event.target == modal) {
+                closeEditModal();
+            }
+        }
+
         function showDetails(agentId, agentDisplayName) {
             currentAgentId = agentId;
             currentSelectedDate = null;
@@ -241,10 +392,7 @@
             document.getElementById('page-title').innerText = 'Monitor';
             document.getElementById('detail-agent-name').innerText = `Agent: ${agentDisplayName}`;
 
-            // Load calendar
             loadAvailableDates(agentId);
-            
-            // Load today's data by default
             loadActivityAndImages(agentId);
         }
 
@@ -281,13 +429,11 @@
         function selectDate(dateStr) {
             currentSelectedDate = dateStr;
             
-            // Update visual selection
             document.querySelectorAll('.date-card').forEach(card => {
                 card.classList.remove('selected');
             });
             event.target.closest('.date-card').classList.add('selected');
             
-            // Update date picker
             document.getElementById('date-picker').value = dateStr;
             document.getElementById('month-picker').value = '';
             
@@ -341,7 +487,6 @@
         }
 
         function loadActivityAndImages(agentId, date = null, month = null) {
-            // let logsUrl = `/api/logs?agent_id=${agentId}&t=${new Date().getTime()}`;
             let logsUrl = `/api/logs?agent_id=${agentId}&t=${new Date().getTime()}`;
             let imagesUrl = `/api/agent-images?agent_id=${agentId}&t=${new Date().getTime()}`;
             

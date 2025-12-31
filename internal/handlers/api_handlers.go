@@ -387,3 +387,37 @@ func (h *MonitorHandler) ReceiveActivity(c *gin.Context) {
 
     c.JSON(http.StatusOK, gin.H{"status": "logged"})
 }
+
+//update Hostname of agent
+func (h *MonitorHandler) UpdateAgentHostname(c *gin.Context) {
+    var input struct {
+        AgentID     uint   `json:"agent_id"`
+        Hostname string `json:"hostname"` 
+    }
+
+    if err := c.ShouldBindJSON(&input); err != nil {
+        c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+        return
+    }
+
+    if input.Hostname == "" {
+        c.JSON(http.StatusBadRequest, gin.H{"error": "Hostname cannot be empty"})
+        return
+    }
+
+    result := h.DB.Model(&models.Agent{}).
+        Where("id = ?", input.AgentID).
+        Update("hostname", input.Hostname)
+
+    if result.Error != nil {
+        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update hostname"})
+        return
+    }
+    if result.RowsAffected == 0 {
+        c.JSON(http.StatusNotFound, gin.H{"error": "Agent not found"})
+        return
+    }
+
+    fmt.Printf("✅ Updated hostname for agent %d to: %s\n", input.AgentID, input.Hostname)
+    c.JSON(http.StatusOK, gin.H{"status": "hostname updated", "new_hostname": input.Hostname})
+}
