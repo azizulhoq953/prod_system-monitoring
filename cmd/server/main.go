@@ -32,14 +32,14 @@ func startStatusChecker(db *gorm.DB) {
                         Where("id = ?", agent.ID).
                         Update("status", "Paused")
                     
-                    fmt.Printf("⏸️  Agent %d (%s) marked as Paused (inactive for %.0f seconds)\n", 
+                    fmt.Printf("Agent %d (%s) marked as Paused (inactive for %.0f seconds)\n", 
                         agent.ID, agent.Hostname, timeSinceLastSeen)
                 }
             }
         }
     }()
     
-    log.Println("✅ Status checker started (checking every 30 seconds)")
+    log.Println("Status checker started (checking every 30 seconds)")
 }
 
 func main() {

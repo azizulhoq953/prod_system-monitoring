@@ -220,7 +220,7 @@ func (h *MonitorHandler) GetActivityLogs(c *gin.Context) {
         if err == nil {
             endOfDay := startOfDay.Add(24 * time.Hour)
             query = query.Where("timestamp >= ? AND timestamp < ?", startOfDay, endOfDay)
-            fmt.Printf("📅 Filtering logs for date: %s\n", date)
+            fmt.Printf("Filtering logs for date: %s\n", date)
         }
     } else if month != "" {
       
@@ -228,7 +228,7 @@ func (h *MonitorHandler) GetActivityLogs(c *gin.Context) {
         if err == nil {
             endOfMonth := startOfMonth.AddDate(0, 1, 0)
             query = query.Where("timestamp >= ? AND timestamp < ?", startOfMonth, endOfMonth)
-            fmt.Printf("📅 Filtering logs for month: %s\n", month)
+            fmt.Printf("Filtering logs for month: %s\n", month)
         }
     }
     if err := query.Find(&activities).Error; err != nil {
@@ -378,11 +378,11 @@ func (h *MonitorHandler) ReceiveActivity(c *gin.Context) {
 
     // check for errors and rows affected
     if result.Error != nil {
-        fmt.Printf("❌ DB Update Error for Agent %d: %v\n", activity.AgentID, result.Error)
+        fmt.Printf("DB Update Error for Agent %d: %v\n", activity.AgentID, result.Error)
     } else if result.RowsAffected == 0 {
-        fmt.Printf("⚠️ WARNING: Tried to update Agent %d but NO ROWS were affected! (ID mismatch?)\n", activity.AgentID)
+        fmt.Printf("WARNING: Tried to update Agent %d but NO ROWS were affected! (ID mismatch?)\n", activity.AgentID)
     } else {
-        fmt.Printf("✅ Success: Updated Agent %d status to Active.\n", activity.AgentID)
+        fmt.Printf("Success: Updated Agent %d status to Active.\n", activity.AgentID)
     }
 
     c.JSON(http.StatusOK, gin.H{"status": "logged"})

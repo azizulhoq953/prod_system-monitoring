@@ -283,9 +283,9 @@ sendActivity := func(windowName string) {
         Post(serverURL + "/api/activity")
 
         if err != nil {
-            fmt.Println("❌ Error sending heartbeat:", err)
+            fmt.Println("Error sending heartbeat:", err)
         } else {
-            fmt.Printf("✅ Server Responded: Status: %d, Body: %s\n", resp.StatusCode(), resp.String())
+            fmt.Printf("Server Responded: Status: %d, Body: %s\n", resp.StatusCode(), resp.String())
         }
     }
 
