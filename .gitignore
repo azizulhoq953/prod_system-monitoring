@@ -3,6 +3,7 @@
 
 # *.exe
 *.dll
-
+.ios-sdk
+*.ios-sdk
 *.db
 uploads/
