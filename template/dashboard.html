@@ -14,7 +14,7 @@
 
         #view-agents { display: block; }
         .agent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; }
-        .agent-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; border-left: 5px solid #007bff; position: relative; }
+        .agent-card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); cursor: pointer; transition: transform 0.2s; border-left: 5px solid #cde1f7; position: relative; }
         .agent-card:hover { transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.15); }
         .agent-name { font-size: 1.2em; font-weight: bold; margin-bottom: 5px; }
         .agent-ip { color: #666; font-size: 0.9em; margin-bottom: 10px; }
@@ -22,9 +22,9 @@
         /* Edit Button */
         .edit-btn {
             position: absolute;
-            top: 10px;
+            top: 5px;
             right: 10px;
-            background: #007bff;
+            background: #aed5ffbe;
             color: white;
             border: none;
             border-radius: 50%;
@@ -211,7 +211,12 @@
     <!-- Edit Hostname Modal -->
     <div id="editModal" class="modal">
         <div class="modal-content">
-            <div class="modal-header">✏️ Edit Agent Hostname</div>
+            <!-- <div class="modal-header"> Edit Agent Hostname</div> -->
+             <div class="modal-header" style="display: flex; align-items: center; gap: 10px;">
+    <img src="/assets/edit-tools.png" alt="Edit" style="width: 24px; height: 24px;"> 
+    
+    <span>Edit Agent Hostname</span>
+</div>
             <input type="text" id="hostname-input" class="modal-input" placeholder="Enter new hostname">
             <div class="modal-buttons">
                 <button class="modal-btn cancel" onclick="closeEditModal()">Cancel</button>
@@ -299,7 +304,7 @@
                         const statusColor = isOnline ? "#28a745" : "#dc3545";
 
                         const statusBadge = `
-                            <span style="background:${statusColor}; color:white; padding:3px 8px; border-radius:12px; font-size:0.8em;">
+                            <span style="background:${statusColor}; color:white; padding:2px 8px; border-radius:12px; font-size:0.8em;">
                                 ${displayStatus}
                             </span>`;
 
@@ -315,7 +320,9 @@
                         };
 
                         card.innerHTML = `
-                            <button class="edit-btn" onclick="event.stopPropagation(); openEditModal(${id}, '${name}')">✏️</button>
+                          <button class="edit-btn" onclick="event.stopPropagation(); openEditModal(${id}, '${name}')">
+                                <img src="/assets/edit-tools.png" alt="Edit" style="width: 16px; height: 16px;">
+                            </button>
                             <div style="display:flex; justify-content:space-between; align-items:center;">
                                 <div class="agent-name">🖥️ ${name}</div>
                                 ${statusBadge}
@@ -334,7 +341,7 @@
                 .catch(err => console.error("Error loading agents:", err));
         }
 
-        // ✅ Edit Modal Functions
+        // Edit Modal Functions
         function openEditModal(agentId, currentHostname) {
             editingAgentId = agentId;
             document.getElementById('hostname-input').value = currentHostname;
@@ -364,12 +371,12 @@
             })
             .then(res => res.json())
             .then(response => {
-                console.log("✅ Hostname updated:", response);
+                console.log(" Hostname updated:", response);
                 closeEditModal();
                 loadAgents(); 
             })
             .catch(err => {
-                console.error("❌ Error updating hostname:", err);
+                console.error(" Error updating hostname:", err);
                 alert('Failed to update hostname!');
             });
         }
